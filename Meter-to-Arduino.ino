@@ -1,16 +1,25 @@
+/*
+This code is the designed to get the data from the CIRCUTOR CVM-NRG96 energy meter and store at the Arduino UNO board.
+Therefore, with this code, Arduino UNO board can work as a master. 
+
+  Name of the Engineer : Kavindu Makaranda Mohottala @ Rotax ESD unit
+  Data : 13 / 02 / 2024
+  Version : v4.1.1
+
+*/
+
 #include <CRC16.h>
 #include <SoftwareSerial.h>
-#include <string.h>
 #include <stdint.h>
 
-const uint8_t rxPin = 2;
+const uint8_t rxPin = 2; // these pin number naming are same as the module pin naming
 const uint8_t txPin = 3;
 SoftwareSerial rs485(rxPin, txPin); // Create RS485 software serial object
 
-const uint8_t slave_address = 0x0A;
-const uint8_t function_code = 0x03;
-const uint8_t data[] = {0x00, 0x00, 0x00, 0x02};
-const uint8_t CRCC[] = {0x00, 0x00};
+const uint8_t slave_address = 0x0A; //slave device address
+const uint8_t function_code = 0x03; 
+const uint8_t data[] = {0x00, 0x00, 0x00, 0x1A}; // starting register number and number of requesting registers
+const uint8_t CRCC[] = {0x00, 0x00}; //for the CRC values
 
 void setup() {
   Serial.begin(19200);
@@ -20,10 +29,10 @@ void setup() {
 void loop() {
   uint8_t frame[] = {slave_address, function_code, data[0], data[1], data[2], data[3], CRCC[0], CRCC[1]};
 
-  CRC16 crc(0x8005, 0xFFFF, 0x0000, true, true);
+  CRC16 crc(0x8005, 0xFFFF, 0x0000, true, true); //polynomial, initial mask, after mask, before shift, after shift 
   crc.add(frame, sizeof(frame)-2); // Exclude CRC bytes
   uint16_t crcValue = crc.getCRC();
-  frame[sizeof(frame) - 2] = crcValue & 0xFF;
+  frame[sizeof(frame) - 2] = crcValue & 0xFF; //due to the MODBUS msg protocol, have to shift the registers of CRC
   frame[sizeof(frame) - 1] = crcValue >> 8;
 
   Serial.print("Requrest-- ");
@@ -33,21 +42,17 @@ void loop() {
   }
   Serial.println(" ");
 
-  // Send the msg
-  rs485.write(frame, sizeof(frame));
+  rs485.write(frame, sizeof(frame)); // Send the MODBUS frame to the Slave device
 
-  //wait for thr slave respond
-  delay(10);
+  delay(10); //wait for thr slave respond
 
   //Read the response 
   uint8_t dataIndex = 0; //starting point the buffer for response
   uint8_t dataBuf[64] = {0}; //buffer for the response msg
 
   while(rs485.available()>0){
-    //read the byte
-    uint8_t dataR = rs485.read();
-    //store the data in array
-    dataBuf[dataIndex] = dataR;
+    uint8_t dataR = rs485.read();  //read the byte
+    dataBuf[dataIndex] = dataR; //store the data in array
     dataIndex++;
   }
   
@@ -60,71 +65,63 @@ void loop() {
   Serial.println();
 
   uint8_t i = 0;
-  uint8_t k = dataBuf[2] / 4;
-  uint32_t result[k] = {0};
+  uint8_t k = dataBuf[2] / 4; // number of parameters due to the 2 words = 1 parameter
+  uint32_t result[k] = {0}; 
   
-  Serial.println(" variables k "+ String(k));
-
-  Serial.println("dataBuf "+ String(dataIndex)) ;
-  uint8_t z[dataBuf[2]];
-  uint8_t q = 3;
-  uint8_t b = 0;
-  while (q < (dataIndex-2)){
-    z[b] = dataBuf[q]; 
-    Serial.print(String(dataBuf[q],HEX));
-    b++;
-    q++;
-  }
-  Serial.println();
-
-  Serial.println("# of registers z "+ String(sizeof(z)));
-  
-  Serial.print("combined array before-- ");
-  for (uint8_t p = 0; p < sizeof(z) ; p++) {
-    Serial.print(z[p],HEX);
-    Serial.print(" ");
-  }
-  Serial.println();
-
-  //  while (i < k ) {
-  // // Loop for each byte within the element
-  //   for (uint8_t j = 0; j < 4; j++) {
-  //     // Shift and combine bytes, handling potential index overflow
-  //     uint8_t index = i * 4 + j;
-  //     result[i] |= z[index] << (24 - 8 * j);
-  //   }
-  //   i++;
-  // } 
- 
-
-  //result[0] = z[0] * 16777216 + z[1] * 65536 + z[2] * 256 + z[3];
-  //result[1] = z[4] * 16777216 + z[5] * 65536 + z[6] * 256 + z[7];
-
-  uint8_t j = 0; 
+  uint8_t j = 3; 
   while (i < k ) {
-  // Loop for each byte within the element
-    result[i] = z[j] * 16777216 + z[j+1] * 65536 + z[j+2] * 256 + z[j+3];
+    result[i] = dataBuf[j] * 16777216 + dataBuf[j+1] * 65536 + dataBuf[j+2] * 256 + dataBuf[j+3];
+    // 1 parameter = 0x00, 0x00, 0x08, 0xF9 = 2297
     j+=4;
     i++;
   }
-  
-  // Serial.println(result[0]);
-  // Serial.println(result[1]);
 
-  for (uint8_t p = 0; p < i ; p++) {
-    Serial.print(result[p]);
-    Serial.print(" ");
-  }
-  Serial.println();
-  
-
-  // Serial.print("combined array after-- ");
+  // for debugging purposes
   // for (uint8_t p = 0; p < i ; p++) {
   //   Serial.print(result[p]);
   //   Serial.print(" ");
   // }
   // Serial.println();
 
+  Serial.println("For line 1: ");
+  Serial.print("Voltage (v): ");
+  Serial.println((float)result[0]/10,2);
+  Serial.print("Voltage (mA): ");
+  Serial.println(result[1]);
+  Serial.print("ACtive Power (W): ");
+  Serial.println(result[2]);
+  Serial.print("Reactive Power (VAR): ");
+  Serial.println(result[3]);
+  Serial.print("Power Fctor (x100): ");
+  Serial.println(result[4]);
+
+  Serial.println();
+  Serial.println("For line 2: ");
+  Serial.print("Voltage (v): ");
+  Serial.println((float)result[5]/10,2);
+  Serial.print("Voltage (mA): ");
+  Serial.println(result[6]);
+  Serial.print("ACtive Power (W): ");
+  Serial.println(result[7]);
+  Serial.print("Reactive Power (VAR): ");
+  Serial.println(result[8]);
+  Serial.print("Power Fctor (x100): ");
+  Serial.println(result[9]);
+  
+  Serial.println();
+  Serial.println("For line 3: ");
+  Serial.print("Voltage (v): ");
+  Serial.println((float)result[10]/10,2);
+  Serial.print("Voltage (mA): ");
+  Serial.println(result[11]);
+  Serial.print("ACtive Power (W): ");
+  Serial.println(result[12]);
+  Serial.print("Reactive Power (VAR): ");
+  Serial.println(result[13]);
+  // Serial.print("Power Fctor (x100): ");
+  // Serial.println(result[14]);
+
+  Serial.println();
   delay(1000);
 }
 
