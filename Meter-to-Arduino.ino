@@ -2,21 +2,24 @@
 #include <SoftwareSerial.h>
 #include <string.h>
 
-const int rxPin = 2; //tx pin
-const int txPin = 3; //rx pin
+/*only 2 parameters can be get from the Slave, when we try get more of them,
+the results become wrong one
+parameter 2 - 2259 0
+parameter 3 - 2259 18 0
+parameter 3 - 0 85596 55662*/
+
+const int rxPin = 2;
+const int txPin = 3;
 SoftwareSerial rs485(rxPin, txPin); // Create RS485 software serial object
 
 const byte slave_address = 0x0A;
 const byte function_code = 0x03;
-const byte data[] = {0x00, 0x00, 0x00, 0x02}; // Example data (2 bytes)
+const byte data[] = {0x00, 0x00, 0x00, 0x04};
 const byte CRCC[] = {0x00, 0x00};
 
 void setup() {
   Serial.begin(9600);
-  // Configure RS485 serial port
-  rs485.begin(9600);
-
-  
+  rs485.begin(9600); // Configure RS485 serial port
 }
 
 void loop() {
@@ -43,50 +46,64 @@ void loop() {
 
   //Read the response 
   int dataIndex = 0; //starting point the buffer for response
-  byte dataBuf[256]; //buffer for the response msg
-
-  // for (int i=0; i<256; i++){
-  //   dataBuf[i] = 0;
-  // }
+  byte dataBuf[64] = {0}; //buffer for the response msg
 
   while(rs485.available()>0){
     //read the byte
-    byte data = rs485.read();
+    byte dataR = rs485.read();
     //store the data in array
-    dataBuf[dataIndex] = data;
+    dataBuf[dataIndex] = dataR;
     dataIndex++;
   }
   
-  delay(100);
 
   //print the stored data
   Serial.print("Received-- ");
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < dataIndex; i++) {
     Serial.print(dataBuf[i], HEX);
     Serial.print(" ");
   }
   Serial.println();
-  dataIndex = 0;
 
-  uint32_t result = result | (dataBuf[3]<<24) |  (dataBuf[4]<<16) |  (dataBuf[5]<<8) |  (dataBuf[6]);
+  int j = 0;
+  uint32_t result[j]={0}; 
+  
+  
+  int k = data[3] * 2;
+  Serial.println("Received bytes: "+String(k));
 
-  Serial.print("Voltage: ");
-  Serial.println((float)result/10,2);
+  delay(100);
 
-  Serial.println("\n");
-  delay(250);
+  //int i = 3;
+  //result[0] = {(dataBuf[i]<<24) |  (dataBuf[i+1]<<16) |  (dataBuf[i+2]<<8) |  (dataBuf[i+3]) };
+  //i = 7;
+  //result[1] = {(dataBuf[i]<<24) |  (dataBuf[i+1]<<16) |  (dataBuf[i+2]<<8) |  (dataBuf[i+3]) };
+  
+  // for(int i=3; i<9; i+4){
+  //   result[j] = {(dataBuf[i]<<24) |  (dataBuf[i+1]<<16) |  (dataBuf[i+2]<<8) |  (dataBuf[i+3]) };
+  //   j++; 
+  // }
+
+  int i = 3;
+  while(i< k){
+    result[j] = {(dataBuf[i]<<24) |  (dataBuf[i+1]<<16) |  (dataBuf[i+2]<<8) |  (dataBuf[i+3]) };
+    j++;
+    i+=4;
+  }
+
+
+  Serial.print("combined array-- ");
+  for (int i = 0; i < j ; i++) {
+    Serial.print(result[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
+
+  delay(1000);
 }
+/*only 2 parameters can be get from the Slave, when we try get more of them,
+the results become wrong one
+parameter 2 - 2259 0
+parameter 3 - 2259 18 0
+parameter 3 - 0 85596 55662*/
 
-// // CRC calculation function (replace with your preferred CRC implementation)
-// word calculateCRC(byte* data, byte length) {
-//   word crc = 0xFFFF;
-//   for (byte i = 0; i < length; i++) {
-//     crc ^= data[i];
-//     for (byte j = 0; j < 8; j++) {
-//       if (crc & 0x0001) {
-//         crc = (crc >> 1) ^ 0xA001;
-//       } else {
-//         crc >>= 1;
-//       }
-//     }
-//   }
