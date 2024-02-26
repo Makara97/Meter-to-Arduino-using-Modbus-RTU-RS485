@@ -1,58 +1,63 @@
-#include <SoftwareSerial.h>
+#include <CRC.h>
+#include <SoftwareSerial.h> 
 
-#define RS_RO    0
-#define RS_DI    1
-#define RS_DE_RE 2
+// Modbus constants (assuming slave address 1, function code 3)
+const byte slave_address = 1;
+const byte function_code = 3;
+const byte data[] = {0 , 2}; // Example data (2 bytes)
 
-String sid;
-String mid;
-String noblock = " ";
+// RS485 hardware pins (adjust for your setup)
+const int txPin = 1;
+const int rxPin = 0;
 
-SoftwareSerial RS_Master(RS_RO,RS_DI); //RX,TX
+SoftwareSerial rs485(txPin, rxPin); // Create RS485 software serial object
 
 void setup() {
-  Serial.begin (9600);
-  RS_Master.begin (9600);
-  pinMode (RS_DE_RE, OUTPUT);
-  //master need to active RS_DE_RE to high to start the transmition
-  digitalWrite(RS_DE_RE, HIGH);
-  Serial.println("Master node is ready.....");
+  // Begin serial communication for debugging
+  Serial.begin(9600);
+
+  // Configure RS485 serial port
+  rs485.begin(9600);
 }
 
 void loop() {
-  //Get the slaveID, MemoryID and number of blocks
-  Serial.println("Enter the slaveID to request the data");
-  if(Serial.available()){
-    sid = Serial.readStringUntil('\n');
-    Serial.println("Enter the starting memory addressID of the request data");
-    if(Serial.available()){
-      mid = Serial.readStringUntil('\n');
-      
-      if(mid.toInt() > 30000){
-        Serial.println("Enter the number of blockes in the request data");
-        if(Serial.available()){
-          String noblock = Serial.readStringUntil('\n');
-        }
-      }
-    }
+  // Construct the Modbus frame without CRC
+  byte frame[] = {slave_address, function_code, data[0], data[1]};
+
+  // Create CRC16 object with correct parameters
+  CRC16 crc(0x8005, 0xFFFF, 0x0000, true); // CRC-16-IBM with bit-reversing
+
+  // Calculate CRC
+  crc.add(frame, sizeof(frame) - 2); // Exclude CRC bytes
+  uint16_t crcValue = crc.getCRC();
+
+  // Append CRC to frame (reverse byte order)
+  frame[sizeof(frame) - 2] = crcValue & 0xFF;
+  frame[sizeof(frame) - 1] = crcValue >> 8;
+
+  // Send the Modbus frame over RS485
+  rs485.write(frame, sizeof(frame));
+
+  // Debug logging
+  Serial.print("Sent Modbus frame: ");
+  for (int i = 0; i < sizeof(frame); i++) {
+    Serial.print(frame[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.println(" ");
+  Serial.println("Waiting for the response.......");
+  delay(100);
+
+  while (!rs485.available()) {  // Wait for data
+    delay(100);  // Small delay to avoid flooding loop
   }
 
-//create the request msg for the  
-Serial.println("Geting the requested data from "+ sid + " " + mid + " "+ noblock);
-Serial.println("wait......");
-  //msg create here
-
-//request the data using created msg from slaves and wait until response
-  //msg post here
-RS_Master (Serial.read()); //need to edit the serial.read to msgs
-digitalWrite (RS_DE_RE, LOW);
-delay(100); //or wait for the response, need to add timeout here
-
-//save the response msg in memory
-if(RS_Master.available()){
-  string rev = RS_Master.read();
   Serial.println("Here the data from the device");
-  Serial.println("slaveid:"+slaveid+" "+"Memoryid:"+memoryid+" "+"Data:"+data);
-}
-digitalWwite(RS_DE_RE, HIGH);
+  Serial.print("Response: ");
+  byte res = rs485.read();
+
+
+  Serial.print(res);
+
+  delay(1000);
 }
