@@ -16,14 +16,14 @@ const uint8_t rxPin = 2; // these pin number naming are same as the module pin n
 const uint8_t txPin = 3;
 SoftwareSerial rs485(rxPin, txPin); // Create RS485 software serial object
 
-const uint8_t slave_address = 0x0A; //slave device address
+const uint8_t slave_address = 0x03; //slave device address
 const uint8_t function_code = 0x03; 
-const uint8_t data[] = {0x00, 0x00, 0x00, 0x1A}; // starting register number and number of requesting registers
+const uint8_t data[] = {0x00, 0x8C, 0x00, 0x1C}; // starting register number and number of requesting registers
 const uint8_t CRCC[] = {0x00, 0x00}; //for the CRC values
 
 void setup() {
-  Serial.begin(19200);
-  rs485.begin(19200); // Configure RS485 serial port
+  Serial.begin(9600);
+  rs485.begin(9600); // Configure RS485 serial port
 }
 
 void loop() {
@@ -82,7 +82,7 @@ void loop() {
   //   Serial.print(" ");
   // }
   // Serial.println();
-
+/*
   Serial.println("For line 1: ");
   Serial.print("Voltage (v): ");
   Serial.println((float)result[0]/10,2);
@@ -120,7 +120,7 @@ void loop() {
   Serial.println(result[13]);
   // Serial.print("Power Fctor (x100): ");
   // Serial.println(result[14]);
-
+*/
   Serial.println();
   delay(1000);
 }
