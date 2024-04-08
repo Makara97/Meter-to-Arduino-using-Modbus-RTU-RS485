@@ -12,6 +12,8 @@ Before we stablish the communicaton, we have to collect following devices and so
 * RS485 to TTL module
 * Arduino Development Board (Ex: Arduino UNO, Ardunino Mega)
 * Arduino IDE Software
+    * CRC16 library
+    * Software Serial library
 
 ### Modbus Protocol
 
@@ -57,6 +59,18 @@ Modbus RTU RS485 finds extensive application across diverse industries, includin
 
 5.Process Control: In process control applications, Modbus RTU RS485 enables real-time communication between control systems and field devices, ensuring accurate control and monitoring of industrial processes.
 
+#### Memory modules in Modbus Protocol
+
+In this protocol, there are 4 different memory types are used; 2 types are read only and other 2 are read and write capabitities. Also there is another method to divide. 2 of memory them are single bit memory space and used with coils and relays. The other 2 used to work with registers with 32 bit lenth. 
+
+| Register Number | Name | Type |
+| ---- | ----- | ---- | 
+| 00001-09999 | Discrete Output Coils | read-write |
+| 10001-19999 | Discrete Input Contacts | read only |
+| 30001-39999 | Analog Input Registers | read only |
+| 40001-49999 | Analog Output Holding Registers | read-write |
+
+
 #### Message structure
 
 Mainly, there are 4 sections available in the Modbus RTU message structure.
@@ -64,7 +78,121 @@ Mainly, there are 4 sections available in the Modbus RTU message structure.
 | SlaveID | Function code | Special data | CRC |
 | ---- | ----- | ----- | -----|
 
+##### SlaveID
 
+The SlaveID is the address of the device (Ex: Energy Meter). It can be from 0 to 247 and 248 to 255 are reserved.
+
+##### Function Code
+
+| Function code | Description | Access type |
+| ----- | ---- | ---- | 
+| 01 (0x01) | Read Coil status | Read | 
+| 02 (0x02) | Read Input status | Read |
+| 03 (0x03) | Read Holding Resisters | Read |
+| 04 (0x04) | Read Input Registers | Read |
+| 05 (0x05) | Force Single Coil | Write |
+| 06 (0x06) | Preset Single Register | Write |
+| 15 (0x0F) | Force Multiple Coils | Write |
+| 16 (0x10) | Preset Multiple Registers | Write |
+
+##### CRC
+
+To calculate the CRC value, we have to setup the parameter according to the this, 
+
+Polynommial - 0x8005
+Initial mask - 0xFFFF
+After mask - 0x0000
+Before shift - True
+After shift - True
+
+#### Data request and data recieved message 
+
+This is an example that request data from a meter and its answer.
+
+Request - 11 03 006B 0003 7687
+Recieve - 11 03 06 AE41 5652 4340 49AD
+
+| Byte (HEX) | Request | Byte (HEX) | Recieve |
+| ---- | ---- | ----- | ---- |
+| 11 | Device address | 11 | Device address |
+| 03 | Function address | 03 | Function address |
+| 00 | Address of the first register Hi byte | 06 | Number of bytes more |
+| 6B | Address of the first register Lo byte | AE | Register value Hi #30108 |
+| 00 | Number of registers Hi bytes | 41 | Register value Lo #30108 |
+| 03 | Number of registers Lo bytes | 56 | Register value Hi #30109 |
+| 76 | Checksum CRC | 52 | Register value Lo #30109 |
+| 87 | Checksum CRC | 43 | Register value Hi #30110 |
+| | | 40 | Register value Lo #30110 |
+| | | 49 | Checksum CRC |
+| | | AD | Checksum CRC |
 
 ### How to get the relevant data from the meter
+
+#### Select the RX and TX pins
+
+To stablish the serial communication, we used the Software Serial instand of the Hardware Serial due the advantages of the Software serial method.
+In this code, we used the pin number 2 as the RX pin and the pin number 3 as the TX pin.
+
+#### Connection
+
+RS485 to TTL module need to connect with the arduino board according to the following,
+both RX pins and TX pins need to be interconnected. (Ex: Module RX pin to Arduino RX pin)
+
+#### Data request
+
+```
+const uint8_t slave_address = 0x03;
+const uint8_t function_code = 0x03; 
+const uint8_t data[] = {0x00, 0x54, 0x00, 0x0C}; 
+const uint8_t CRCC[] = {0x00, 0x00}; 
+```
+```
+uint8_t frame[] = {slave_address, function_code, data[0], data[1], data[2], data[3], CRCC[0], CRCC[1]};
+```
+
+The slave_address is the meter ID that is working with.
+
+The function_code is already describe in the above.
+
+The data request need to be set as above. In data[] array, the first 2 places are the starting register number, the next places are the number of data words that need to request from the meter. (1 parameter = 2 words = 4 bytes)
+
+The calculated CRC values are replaced the CRCC[] array.
+
+#### CRC calculation
+
+```
+CRC16 crc(0x8005, 0xFFFF, 0x0000, true, true); //polynomial, initial mask, after mask, before shift, after shift 
+crc.add(frame, sizeof(frame)-2); // Exclude CRC bytes
+uint16_t crcValue = crc.getCRC();
+frame[sizeof(frame) - 2] = crcValue & 0xFF; //due to the MODBUS msg protocol, have to shift the registers of CRC
+frame[sizeof(frame) - 1] = crcValue >> 8;
+```
+The polynomial data that need to calculate the CRC, need to be set as above for the Modbus RTU. Then, the calculated CRC is placed in the frame array. 
+
+#### Send the frame to slave device
+
+To send the data request to the device, need to send the frame to it using the following way,
+
+` rs485.write(frame, sizeof(frame)); `
+
+#### Capture the response from the device
+
+In the Atmega MCUs (used in Arduino), the serial recieving buffer is only 64 bytes. Therefore, all the recieving data need to be 64 bytes or less. Otherwise, the data more than 64 bytes overflows and cannot recover. 
+
+```
+uint8_t dataIndex = 0; //starting point the buffer for response
+uint8_t dataBuf[64] = {0}; //buffer for the response msg
+
+while(rs485.available()>0){
+    uint8_t dataR = rs485.read();  //read the byte
+    dataBuf[dataIndex] = dataR; //store the data in array
+    dataIndex++;
+}
+```
+
+Then the recieved data need to be group according to the Modbus RTU protocol. 
+
+#### Group the bytes to get the results
+
+As prevously mentions, each parameter comes with 4 bytes and Modbus protocol follows the big-endian structure (Heigher values come first). 
 
