@@ -2,7 +2,7 @@
 This code is the designed to get the data from the CIRCUTOR CVM-NRG96 energy meter and store at the Arduino UNO board.
 Therefore, with this code, Arduino UNO board can work as a master. 
 
-  Name of the Engineer : Kavindu Makaranda Mohottala @ Rotax ESD unit
+  Name of the Engineer : Kavindu Makaranda Mohottala
   Data : 13 / 02 / 2024
   Version : v4.1.1
 
